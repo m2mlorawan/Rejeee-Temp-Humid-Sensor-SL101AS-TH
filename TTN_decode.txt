@@ -1,0 +1,17 @@
+function decodeUplink(input) {
+    var obj = {};
+    var warnings = [];
+    obj.battery = (input.bytes[1]&0x1F);
+    obj.vol = (input.bytes[2]);
+    obj.temperature = (((input.bytes[4] & 0x80 ? input.bytes[4] - 0x100 : input.bytes[4]) << 8) 
++ 
+input.bytes[5]) / 10;
+    obj.humidity = input.bytes[7];
+    if (obj.temperature < -10) {
+        warnings.push("it's cold");
+    }
+    return {
+        data: obj,
+        warnings: warnings
+    };
+}
