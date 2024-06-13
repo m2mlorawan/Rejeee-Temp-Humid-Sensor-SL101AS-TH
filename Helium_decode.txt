@@ -1,0 +1,151 @@
+
+function Decoder(bytes, port) {
+    var input = {bytes: bytes, port:port};
+    var obj = {};
+    var warnings = [];
+    var len = input.bytes ? input.bytes.length : 0;
+    var offset = 0;
+    var dtype = 0, dlen = 0;
+    /* first is device information(0x00) */
+    offset++;
+    obj.battery = (input.bytes[offset++] & 0x1F);
+    obj.res = (input.bytes[offset++]);
+    do {
+        dtype = input.bytes[offset++];
+        if (0x01 == dtype) {
+            /* 3D sensor */
+            obj.evt = input.bytes[offset++];
+            obj.acceX = (((input.bytes[offset] & 0x80 ? input.bytes[offset] - 0x100 : input.bytes[offset]) << 8) + input.bytes[offset + 1])
+            offset += 2;
+            obj.acceY = (((input.bytes[offset] & 0x80 ? input.bytes[offset] - 0x100 : input.bytes[offset]) << 8) + input.bytes[offset + 1])
+            offset += 2;
+            obj.acceZ = (((input.bytes[offset] & 0x80 ? input.bytes[offset] - 0x100 : input.bytes[offset]) << 8) + input.bytes[offset + 1])
+            offset += 2;
+            obj.angle = input.bytes[offset++];
+        } else if (0x04 == dtype) {
+            /* temperature sensor, value unit is 0.1 ℃ */
+            obj.temperature = (((input.bytes[offset] & 0x80 ? input.bytes[offset] - 0x100 : input.bytes[offset]) << 8) + input.bytes[offset + 1]) / 10;
+            offset += 2;
+        } else if (0x05 == dtype) {
+            /* humidity sensor, value unit is 1 %RH */
+            obj.humidity = input.bytes[offset++];
+        } else if (0x06 == dtype) {
+            /* oxygen sensor, value unit is 0.1 %VOL */
+            obj.oxygen = (input.bytes[offset++]) / 10;
+        } else if (0x07 == dtype) {
+            /* pressure sensor, value unit is 1 Pa */
+            obj.pressure = ((input.bytes[offset] << 24) + (input.bytes[offset + 1] << 16) + (input.bytes[offset + 2] << 8) + input.bytes[offset + 3]);
+            offset += 4;
+        } else if (0x09 == dtype) {
+            /* switch sensor or status, value is ON(1) or OFF(0) */
+            obj.switch = input.bytes[offset++];
+        } else if (0x11 == dtype) {
+            /* Incline sensor, value unit is 0.001° */
+            dlen = input.bytes[offset++];
+            if (dlen >= 4) {
+                obj.degreeX = ((input.bytes[offset] << 24) + (input.bytes[offset + 1] << 16) + (input.bytes[offset + 2] << 8) + input.bytes[offset + 3]) / 1000;
+                offset += 4;
+                dlen -= 4;
+            }
+            if (dlen >= 4) {
+                obj.degreeY = ((input.bytes[offset] << 24) + (input.bytes[offset + 1] << 16) + (input.bytes[offset + 2] << 8) + input.bytes[offset + 3]) / 1000;
+                offset += 4;
+                dlen -= 4;
+            }
+            if (dlen >= 4) {
+                obj.degreeZ = ((input.bytes[offset] << 24) + (input.bytes[offset + 1] << 16) + (input.bytes[offset + 2] << 8) + input.bytes[offset + 3]) / 1000;
+                offset += 4;
+                dlen -= 4;
+            }
+            if (dlen > 0) {
+                offset += dlen;
+            }
+        } else if (0x14 == dtype) {
+            /* Mutil-temperature sensor, value unit 0.1 ℃ */
+            dlen = input.bytes[offset++];
+            if (dlen >= 2) {
+                obj.temperature1 = (((input.bytes[offset] & 0x80 ? input.bytes[offset] - 0x100 : input.bytes[offset]) << 8) + input.bytes[offset + 1]) / 10;
+                offset += 2;
+                dlen -= 2;
+            }
+            if (dlen >= 2) {
+                obj.temperature2 = (((input.bytes[offset] & 0x80 ? input.bytes[offset] - 0x100 : input.bytes[offset]) << 8) + input.bytes[offset + 1]) / 10;
+                offset += 2;
+                dlen -= 2;
+            }
+            if (dlen > 0) {
+                offset += dlen;
+            }
+        } else if (0x15 == dtype) {
+            /* Mutil-humidity sensor, value unit 1 %RH */
+            dlen = input.bytes[offset++];
+            if (dlen >= 1) {
+                obj.humidity1 = input.bytes[offset++];
+                dlen -= 1;
+            }
+            if (dlen >= 1) {
+                obj.humidity2 = input.bytes[offset++];
+                dlen -= 1;
+            }
+            if (dlen > 0) {
+                offset += dlen;
+            }
+        } else if (0x1A == dtype) {
+            /* Current and voltage */
+            dlen = input.bytes[offset++];
+            if (dlen >= 2) {
+                /* Current value unit is 1 mA */
+                obj.current = ((bytes[offset] << 8) + bytes[offset + 1]);
+                offset += 2;
+                dlen -= 2;
+            }
+            if (dlen >= 2) {
+                /* voltage value unit is 0.1 V */
+                obj.voltage = ((bytes[offset] << 8) + bytes[offset + 1]) / 10;
+                offset += 2;
+                dlen -= 2;
+            }
+            if (dlen > 0) {
+                offset += dlen;
+            }
+        } else if (0x1B == dtype) {
+            /* Watt and value unit is 1 Watt */
+            dlen = input.bytes[offset++];
+            if (dlen >= 4) {
+                obj.watt = ((bytes[offset] << 24) + (bytes[offset + 1] << 16) + (bytes[offset + 2] << 8) + bytes[offset + 3]);
+                offset += 4;
+                dlen -= 4;
+            }
+            if (dlen > 0) {
+                offset += dlen;
+            }
+        } else if (0x30 == dtype) {
+            /* Hybrid gas sensor: Length + Gas Type + Value */
+            dlen = input.bytes[offset++];
+            /*  follow data length, normal is 5 */
+            if (dlen >= 5) {
+                /**
+                 *  Gas Type
+                 *  0x01 CH4
+                 *  0x02 CO
+                 *  0x03 H2S
+                 *  0x04 CO2
+                 *  0x05 NH3
+                 */
+                var gastype = input.bytes[offset++];
+                /* Value unit is 0.01 */
+                obj.volume = ((input.bytes[offset] << 24) + (input.bytes[offset + 1] << 16) + (input.bytes[offset + 2] << 8) + input.bytes[offset + 3]) / 100;
+                offset += 4;
+                dlen -= 5;
+                if (obj.volume < 0) {
+                    warnings.push("it's invalid");
+                }
+            }
+            if (dlen > 0) {
+                offset += dlen;
+            }
+        }
+        len = len - offset;
+    } while (len > 0);
+    return obj;
+}
